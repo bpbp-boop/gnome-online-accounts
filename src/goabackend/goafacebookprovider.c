@@ -87,7 +87,8 @@ get_provider_features (GoaProvider *_provider)
 {
   return GOA_PROVIDER_FEATURE_BRANDED |
          GOA_PROVIDER_FEATURE_PHOTOS |
-         GOA_PROVIDER_FEATURE_MAPS;
+         GOA_PROVIDER_FEATURE_MAPS |
+         GOA_PROVIDER_FEATURE_CALENDAR;
 }
 
 /* facebook client flow sends a different auth query then the base
@@ -323,8 +324,10 @@ build_object (GoaProvider         *provider,
   GoaAccount *account;
   GoaPhotos *photos = NULL;
   GoaMaps *maps = NULL;
+  GoaCalendar *calendar = NULL;
   gboolean photos_enabled;
   gboolean maps_enabled;
+  gboolean calendar_enabled;
   gboolean ret = FALSE;
 
   account = NULL;
@@ -398,10 +401,40 @@ build_object (GoaProvider         *provider,
 
   ret = TRUE;
 
+  /* Calendars */
+  calendar = goa_object_get_calendar (GOA_OBJECT (object));
+  calendar_enabled = g_key_file_get_boolean (key_file, group, "CalendarEnabled", NULL);
+
+  if (calendar_enabled)
+    {
+      if (calendar == NULL)
+        {
+          calendar = goa_calendar_skeleton_new ();
+          goa_object_skeleton_set_calendar (object, calendar);
+        }
+    }
+  else
+    {
+      if (calendar != NULL)
+        goa_object_skeleton_set_calendar (object, NULL);
+    }
+
+  if (just_added)
+    {
+      goa_account_set_calendar_disabled (account, !calendar_enabled);
+      g_signal_connect (account,
+                        "notify::calendar-disabled",
+                        G_CALLBACK (goa_util_account_notify_property_cb),
+                        "CalendarEnabled");
+    }
+
+  ret = TRUE;
+
  out:
   g_clear_object (&account);
   g_clear_object (&photos);
   g_clear_object (&maps);
+  g_clear_object (&calendar);
   return ret;
 }
 
@@ -442,6 +475,7 @@ add_account_key_values (GoaOAuth2Provider *provider,
 {
   g_variant_builder_add (builder, "{ss}", "PhotosEnabled", "true");
   g_variant_builder_add (builder, "{ss}", "MapsEnabled", "true");
+  g_variant_builder_add (builder, "{ss}", "CalendarEnabled", "true");
 }
 
 /* ---------------------------------------------------------------------------------------------------- */
